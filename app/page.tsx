@@ -137,6 +137,7 @@ export default function TypingGame() {
 	const [timeLeft, setTimeLeft] = useState(30);
 	const [isGameActive, setIsGameActive] = useState(false);
 	const [isGameOver, setIsGameOver] = useState(false);
+	const [mistakes, setMistakes] = useState(0);
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	const currentWord = pythonWords[currentWordIndex];
@@ -153,28 +154,18 @@ export default function TypingGame() {
 		}
 	}, [isGameActive, timeLeft]);
 
-	// IMEを無効化して英数字モードにする！
+	// フォーカス設定のみ
 	useEffect(() => {
 		if (inputRef.current && isGameActive) {
 			inputRef.current.focus();
-			// IME無効化（CSSのime-modeは非推奨かつ型エラーになるため、inputに属性を直接設定）
-			inputRef.current.setAttribute('inputmode', 'latin');
 		}
 	}, [isGameActive]);
-
-	useEffect(() => {
-		if (inputRef.current) {
-			inputRef.current.setAttribute('autocomplete', 'off');
-			inputRef.current.setAttribute('autocorrect', 'off');
-			inputRef.current.setAttribute('autocapitalize', 'off');
-			inputRef.current.setAttribute('spellcheck', 'false');
-		}
-	}, []);
 
 	const startGame = () => {
 		setIsGameActive(true);
 		setIsGameOver(false);
 		setScore(0);
+		setMistakes(0);
 		setTimeLeft(30);
 		setCurrentWordIndex(Math.floor(Math.random() * pythonWords.length));
 		setUserInput('');
@@ -184,6 +175,7 @@ export default function TypingGame() {
 		setIsGameActive(false);
 		setIsGameOver(false);
 		setScore(0);
+		setMistakes(0);
 		setTimeLeft(30);
 		setCurrentWordIndex(0);
 		setUserInput('');
@@ -203,76 +195,65 @@ export default function TypingGame() {
 		if (e.key === 'Enter' && userInput === currentWord && isGameActive) {
 			handleSubmit();
 		}
-
-		// ミス入力を防ぐ！！
-		if (isGameActive) {
-			const nextChar = currentWord[userInput.length];
-
-			// バックスペースは許可
-			if (e.key === 'Backspace') {
-				return;
-			}
-
-			// Enterは完全一致時のみ許可
-			if (e.key === 'Enter') {
-				if (userInput !== currentWord) {
-					e.preventDefault();
-				}
-				return;
-			}
-
-			// 次に入力すべき文字以外は拒否！
-			if (e.key !== nextChar && userInput.length < currentWord.length) {
-				e.preventDefault();
-			}
-
-			// 単語の長さを超える入力は拒否
-			if (userInput.length >= currentWord.length) {
-				e.preventDefault();
-			}
-		}
-	};
-
-	// IME入力を防ぐ
-	const handleComposition = (e: React.CompositionEvent) => {
-		e.preventDefault();
 	};
 
 	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const value = e.target.value;
 
-		// 正しい文字のみ許可（前の文字まで正しい場合のみ）
-		let validInput = '';
-		for (let i = 0; i < Math.min(value.length, currentWord.length); i++) {
-			if (value[i] === currentWord[i]) {
-				validInput += value[i];
-			} else {
-				break;
-			}
-		}
+		if (!isGameActive) return;
 
-		setUserInput(validInput);
+		// 最後の文字だけチェック（追加された文字）
+		if (value.length > userInput.length) {
+			const newChar = value[value.length - 1];
+			const expectedChar = currentWord[userInput.length];
+
+			if (newChar === expectedChar) {
+				// 正解！
+				setUserInput(value);
+			} else {
+				// ミス！カウントして音とかエフェクトを出すけど入力は追加しない
+				setMistakes(mistakes + 1);
+				// 入力は更新しない（ミスした文字は入力されない）
+			}
+		} else {
+			// バックスペースの場合は許可
+			setUserInput(value);
+		}
 	};
 
 	const renderWord = () => {
 		return currentWord.split('').map((char, index) => {
 			let bgColor = 'bg-gray-700';
+			let textColor = 'text-white';
 
 			if (index < userInput.length) {
-				bgColor = 'bg-green-500'; // 常に正解（間違いは入力されないので）
+				// 入力済み（必ず正解）
+				bgColor = 'bg-green-500';
 			} else if (index === userInput.length) {
+				// 現在の入力位置
 				bgColor = 'bg-blue-500';
 			}
 
 			return (
 				<span
 					key={index}
-					className={`${bgColor} text-white px-1 py-2 m-1 rounded font-mono text-4xl transition-colors duration-200`}
+					className={`${bgColor} ${textColor} px-1 py-2 m-1 rounded font-mono text-4xl transition-colors duration-200`}
 				>
 					{char}
 				</span>
 			);
 		});
+	};
+
+	// ミス表示エフェクト
+	const MistakeEffect = () => {
+		if (mistakes === 0) return null;
+
+		return (
+			<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+				<div className="text-red-500 text-6xl font-bold animate-ping">✗</div>
+			</div>
+		);
 	};
 
 	if (!isGameActive && !isGameOver) {
@@ -284,8 +265,9 @@ export default function TypingGame() {
 					</h1>
 					<p className="text-xl mb-4 text-gray-300">30秒で何問解けるかな？</p>
 					<div className="mb-8 text-yellow-300 space-y-2">
-						<p>💡 自動で英数字入力モードになるよ〜</p>
-						<p>🚫 間違った文字は入力されないよ〜</p>
+						<p>💡 英数字でタイピングしてね〜</p>
+						<p>🚫 間違った文字は赤く表示してミスカウント！</p>
+						<p>✅ 正しい文字を入力するまで先に進めないよ〜</p>
 					</div>
 					<div className="mb-8 text-gray-400">
 						<p>全{pythonWords.length}種類の単語からランダム出題！</p>
@@ -302,6 +284,9 @@ export default function TypingGame() {
 	}
 
 	if (isGameOver) {
+		const accuracy =
+			score > 0 ? Math.round((score / (score + mistakes)) * 100) : 0;
+
 		return (
 			<div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
 				<div className="text-center">
@@ -309,7 +294,17 @@ export default function TypingGame() {
 						🎉 結果発表！
 					</h1>
 					<div className="text-8xl font-bold mb-4 text-green-400">{score}</div>
-					<p className="text-2xl mb-8 text-gray-300">問正解！</p>
+					<p className="text-2xl mb-4 text-gray-300">問正解！</p>
+					<div className="text-lg text-gray-400 mb-8 space-y-2">
+						<p>
+							❌ ミス:{' '}
+							<span className="text-red-400 font-bold">{mistakes}</span>回
+						</p>
+						<p>
+							🎯 正確率:{' '}
+							<span className="text-blue-400 font-bold">{accuracy}%</span>
+						</p>
+					</div>
 					<div className="space-x-4">
 						<button
 							onClick={startGame}
@@ -330,14 +325,19 @@ export default function TypingGame() {
 	}
 
 	return (
-		<div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+		<div className="min-h-screen bg-gray-900 text-white flex items-center justify-center relative">
+			<MistakeEffect />
+
 			<div className="text-center">
-				<div className="flex justify-between items-center mb-8 w-full max-w-md mx-auto">
-					<div className="text-2xl">
+				<div className="flex justify-between items-center mb-8 w-full max-w-lg mx-auto">
+					<div className="text-xl">
 						🎯 Score: <span className="text-yellow-400 font-bold">{score}</span>
 					</div>
+					<div className="text-xl">
+						❌ Miss: <span className="text-red-400 font-bold">{mistakes}</span>
+					</div>
 					<div
-						className={`text-3xl font-bold ${
+						className={`text-2xl font-bold ${
 							timeLeft <= 10 ? 'text-red-400 animate-pulse' : 'text-blue-400'
 						}`}
 					>
@@ -354,18 +354,18 @@ export default function TypingGame() {
 					value={userInput}
 					onChange={handleInputChange}
 					onKeyDown={handleKeyDown}
-					onCompositionStart={handleComposition}
-					onCompositionUpdate={handleComposition}
-					onCompositionEnd={handleComposition}
 					className="text-black px-4 py-2 text-xl rounded border-2 border-gray-300 font-mono"
 					placeholder="Type here..."
 					autoFocus
 					disabled={!isGameActive}
-					style={{ imeMode: 'disabled' }}
+					autoComplete="off"
+					autoCorrect="off"
+					autoCapitalize="off"
+					spellCheck="false"
 				/>
 
 				<div className="mt-4 text-sm text-gray-400">
-					💡 正しい文字のみ入力できるよ〜
+					💡 間違えた時は✗マークが出るよ〜
 				</div>
 			</div>
 		</div>
