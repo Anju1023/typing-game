@@ -138,6 +138,7 @@ export default function TypingGame() {
 	const [isGameActive, setIsGameActive] = useState(false);
 	const [isGameOver, setIsGameOver] = useState(false);
 	const [mistakes, setMistakes] = useState(0);
+	const [showMistakeEffect, setShowMistakeEffect] = useState(false); // エフェクト表示用
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	const currentWord = pythonWords[currentWordIndex];
@@ -154,10 +155,18 @@ export default function TypingGame() {
 		}
 	}, [isGameActive, timeLeft]);
 
-	// フォーカス設定のみ
+	// フォーカス設定とIME制御
 	useEffect(() => {
 		if (inputRef.current && isGameActive) {
 			inputRef.current.focus();
+
+			// より強力なIME制御
+			const input = inputRef.current;
+			if (input) {
+				// @ts-ignore - TypeScriptエラー回避
+				input.style.imeMode = 'disabled';
+				input.setAttribute('inputmode', 'latin');
+			}
 		}
 	}, [isGameActive]);
 
@@ -166,6 +175,7 @@ export default function TypingGame() {
 		setIsGameOver(false);
 		setScore(0);
 		setMistakes(0);
+		setShowMistakeEffect(false);
 		setTimeLeft(30);
 		setCurrentWordIndex(Math.floor(Math.random() * pythonWords.length));
 		setUserInput('');
@@ -176,6 +186,7 @@ export default function TypingGame() {
 		setIsGameOver(false);
 		setScore(0);
 		setMistakes(0);
+		setShowMistakeEffect(false);
 		setTimeLeft(30);
 		setCurrentWordIndex(0);
 		setUserInput('');
@@ -195,6 +206,24 @@ export default function TypingGame() {
 		if (e.key === 'Enter' && userInput === currentWord && isGameActive) {
 			handleSubmit();
 		}
+
+		// IME関連のキーイベントをブロック
+		if (e.key === 'Process' || e.key === 'Unidentified') {
+			e.preventDefault();
+		}
+	};
+
+	// IME入力を完全に防ぐ
+	const handleComposition = (e: React.CompositionEvent) => {
+		e.preventDefault();
+		return false;
+	};
+
+	const showMistake = () => {
+		setShowMistakeEffect(true);
+		setTimeout(() => {
+			setShowMistakeEffect(false);
+		}, 500); // 0.5秒で消える
 	};
 
 	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,15 +236,21 @@ export default function TypingGame() {
 			const newChar = value[value.length - 1];
 			const expectedChar = currentWord[userInput.length];
 
+			// 英数字とアンダースコアとドット以外は除去
+			if (!/[a-zA-Z0-9._]/.test(newChar)) {
+				return; // 何もしない
+			}
+
 			if (newChar === expectedChar) {
 				// 正解！
-				setUserInput(value);
+				setUserInput(userInput + newChar);
 			} else {
-				// ミス！カウントして音とかエフェクトを出すけど入力は追加しない
-				setMistakes(mistakes + 1);
-				// 入力は更新しない（ミスした文字は入力されない）
+				// ミス！
+				setMistakes((prev) => prev + 1);
+				showMistake();
+				// 入力は追加しない
 			}
-		} else {
+		} else if (value.length < userInput.length) {
 			// バックスペースの場合は許可
 			setUserInput(value);
 		}
@@ -224,7 +259,6 @@ export default function TypingGame() {
 	const renderWord = () => {
 		return currentWord.split('').map((char, index) => {
 			let bgColor = 'bg-gray-700';
-			let textColor = 'text-white';
 
 			if (index < userInput.length) {
 				// 入力済み（必ず正解）
@@ -237,7 +271,7 @@ export default function TypingGame() {
 			return (
 				<span
 					key={index}
-					className={`${bgColor} ${textColor} px-1 py-2 m-1 rounded font-mono text-4xl transition-colors duration-200`}
+					className={`${bgColor} text-white px-1 py-2 m-1 rounded font-mono text-4xl transition-colors duration-200`}
 				>
 					{char}
 				</span>
@@ -245,12 +279,12 @@ export default function TypingGame() {
 		});
 	};
 
-	// ミス表示エフェクト
+	// ミス表示エフェクト（条件付きで表示）
 	const MistakeEffect = () => {
-		if (mistakes === 0) return null;
+		if (!showMistakeEffect) return null;
 
 		return (
-			<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+			<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
 				<div className="text-red-500 text-6xl font-bold animate-ping">✗</div>
 			</div>
 		);
@@ -265,8 +299,8 @@ export default function TypingGame() {
 					</h1>
 					<p className="text-xl mb-4 text-gray-300">30秒で何問解けるかな？</p>
 					<div className="mb-8 text-yellow-300 space-y-2">
-						<p>💡 英数字でタイピングしてね〜</p>
-						<p>🚫 間違った文字は赤く表示してミスカウント！</p>
+						<p>💡 自動で英数字入力になるよ〜</p>
+						<p>🚫 間違った文字は赤いバツマークが出るよ！</p>
 						<p>✅ 正しい文字を入力するまで先に進めないよ〜</p>
 					</div>
 					<div className="mb-8 text-gray-400">
@@ -284,8 +318,9 @@ export default function TypingGame() {
 	}
 
 	if (isGameOver) {
+		const totalAttempts = score + mistakes;
 		const accuracy =
-			score > 0 ? Math.round((score / (score + mistakes)) * 100) : 0;
+			totalAttempts > 0 ? Math.round((score / totalAttempts) * 100) : 0;
 
 		return (
 			<div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
@@ -354,6 +389,9 @@ export default function TypingGame() {
 					value={userInput}
 					onChange={handleInputChange}
 					onKeyDown={handleKeyDown}
+					onCompositionStart={handleComposition}
+					onCompositionUpdate={handleComposition}
+					onCompositionEnd={handleComposition}
 					className="text-black px-4 py-2 text-xl rounded border-2 border-gray-300 font-mono"
 					placeholder="Type here..."
 					autoFocus
@@ -362,10 +400,11 @@ export default function TypingGame() {
 					autoCorrect="off"
 					autoCapitalize="off"
 					spellCheck="false"
+					inputMode="text"
 				/>
 
 				<div className="mt-4 text-sm text-gray-400">
-					💡 間違えた時は✗マークが出るよ〜
+					💡 間違えた時だけ✗マークが出るよ〜
 				</div>
 			</div>
 		</div>
